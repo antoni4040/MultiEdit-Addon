@@ -19,11 +19,11 @@
 bl_info = {
      "name": "MultiEdit",
      "author": "Antonis Karvelas",
-     "version": (0, 4),
-     "blender": (2, 7, 2),
+     "version": (0, 5),
+     "blender": (2, 7, 3),
      "location": "VIEW 3D > Tools > Multiple Objects Editing ",
      "description": "Allows you to edit multiple objects together in edit mode without destroying data",
-     "warning": "Alpha Version 0.4, getting in good shape...",
+     "warning": "Alpha Version 0.5, maybe has a few problems...",
      "wiki_url": "",
      "tracker_url": "",
      "category": "Mesh"}
@@ -40,6 +40,9 @@ duplicated_list = []
 
 #Create a list to put the vertex_groups that need to be maintained:
 special_vgroups_list = []
+
+#Create a dictionary to put the parents
+parents_list = {}
 
 class MultiEdit_Enter(bpy.types.Operator):
     bl_label = "MultiEdit Enter"
@@ -123,11 +126,9 @@ class MultiEdit_Enter(bpy.types.Operator):
 
         ###Create the necessary vertex groups:###
         bpy.context.scene.objects.active = object
-        special_vgroups_list = [vertex_group.name for vertex_group in object.vertex_groups]
-
-        #####for vertex_group in object.vertex_groups:
-        #####    special_vgroups_list.append(vertex_group.name)
-
+        for vertex_group in object.vertex_groups:
+            special_vgroups_list.append(vertex_group.name) 
+        
         #Create vertex groups containting all the vertices:
         object.vertex_groups.new(object.name)
         vertex_group = object.vertex_groups[-1]
@@ -195,7 +196,12 @@ class MultiEdit_Enter(bpy.types.Operator):
         for group in old_object.users_group:
             bpy.context.scene.objects.active = ob_new
             bpy.ops.object.group_link(group=group.name)
-
+        
+        #Copy parent object value
+        try:
+            parents_list[old_object.name] = (old_object.parent).name
+        except:
+            pass
         #Finally, return the new object:
         return ob_new
 
@@ -215,6 +221,7 @@ class MultiEdit_Exit(bpy.types.Operator):
             del name_list[:]
             del duplicated_list[:]
             del special_vgroups_list[:]
+            parents_list.clear()
 
         #Create the necessary variables:
         active_object = bpy.context.active_object
@@ -281,9 +288,7 @@ class MultiEdit_Exit(bpy.types.Operator):
                                    existing_vg.append(object.vertex_groups[vgroup_index].name)
 
                     vgroup_index += 1
-                object.vertex_groups.remove(vg)
-
-
+        
             #RENAME OBJECTS, ORGANIZES MATERIALS
             if len(existing_vg) < 2 and len(existing_vg) > 0:
                 # try:
@@ -315,8 +320,7 @@ class MultiEdit_Exit(bpy.types.Operator):
 
                     #Call the Copy_Data function:
                     self.Copy_Data(wanted_object_name, object)
-                # except:
-                #     pass
+                
             else:
                 object.name = "New Geometry"
 
@@ -340,7 +344,7 @@ class MultiEdit_Exit(bpy.types.Operator):
         del name_list[:]
         del duplicated_list[:]
         del special_vgroups_list[:]
-
+        parents_list.clear()
 
     def Copy_Data(self, wanted_object_name, object):
 
@@ -369,21 +373,21 @@ class MultiEdit_Exit(bpy.types.Operator):
         for group in bpy.data.objects[wanted_object_name].users_group:
             bpy.context.scene.objects.active = object
             bpy.ops.object.group_link(group=group.name)
-
-        #Copy constraints:
+            
+        #Delete unnecessary vertex groups:
+        for vg in object.vertex_groups:
+            if vg.name in bpy.data.objects[(duplicated_list[(name_list.index(object.name))])].vertex_groups:
+                pass
+            else:
+                object.vertex_groups.remove(vg)     
+        
+       #Copy constraints:
         for constr in bpy.data.objects[wanted_object_name].constraints:
             constr_new = object.constraints.new(constr.type)
             properties = [p.identifier for p in constr.bl_rna.properties
                           if not p.is_readonly]
             for prop in properties:
                 setattr(constr_new, prop, getattr(constr, prop))
-
-        #Copy vertex groups:
-        for vgroup in object.vertex_groups:
-             if vgroup.name in bpy.data.objects[(duplicated_list[(name_list.index(object.name))])].vertex_groups:
-                  pass
-             else:
-                  object.vertex_groups.remove(vgroup)
 
         #Copy shape keys:
         try:
@@ -407,7 +411,8 @@ class MultiEdit_Exit(bpy.types.Operator):
         #Check if checkbox is true and preserve or not the rotation/scale values of the objects:
         if bpy.context.scene.Preserve_Location_Rotation_Scale:
           for obj in bpy.data.objects:
-            for nam in name_list:
+              self.Preserve_Parents(obj)
+              for nam in name_list:
                 if nam == obj.name:
                     obj.select = True
                     bpy.context.scene.objects.active = obj
@@ -454,21 +459,29 @@ class MultiEdit_Exit(bpy.types.Operator):
 
                 else:
                   pass
-
+        
         else:
           for obj in bpy.data.objects:
             for nam in name_list:
-              if nam in obj.name:
-                obj.select = True
+                self.Preserve_Parents(obj)
+                if nam in obj.name:
+                    obj.select = True
 
-                #Location:
-                bpy.ops.object.origin_set(type="ORIGIN_GEOMETRY")
+                    #Location:
+                    bpy.ops.object.origin_set(type="ORIGIN_GEOMETRY")
 
-                #Rotation/Scale:
-                bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+                    #Rotation/Scale:
+                    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
 
-              else:
-                pass
+                else:
+                    pass
+        
+    #A function to preserve an object's parent:    
+    def Preserve_Parents(self, obj):
+        try:
+            obj.parent = bpy.data.objects[parents_list[obj.name]]
+        except:
+            pass
 
     #Quite simple. Deletes the objects that don't have any geometry
     def Delete_Objects(self):
