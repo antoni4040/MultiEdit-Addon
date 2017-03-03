@@ -20,7 +20,7 @@ bl_info = {
      "name": "MultiEdit",
      "author": "Antonis Karvelas",
      "version": (0, 5),
-     "blender": (2, 7, 3),
+     "blender": (2, 7, 8),
      "location": "VIEW 3D > Tools > Multiple Objects Editing ",
      "description": "Allows you to edit multiple objects together in edit mode without destroying data",
      "warning": "Alpha Version 0.5, maybe has a few problems...",
